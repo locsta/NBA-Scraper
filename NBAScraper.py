@@ -51,7 +51,6 @@ class NBAScraper(Scraper):
     def get_games_by_date(self, date=None):
         if not date:
             date = (datetime.now() - timedelta(days = 1)).strftime("%Y-%m-%d")
-            print(date)
             
         self.browser.get(f"https://www.nba.com/games?date={date}")
         
@@ -73,17 +72,26 @@ class NBAScraper(Scraper):
             self.browser.get(game["game_link"])
             print(f"Getting data for game {game['game_name']} played on the {game['date']}")
             WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'antialiased')))
-            html = self.browser.page_source
-            soup = BeautifulSoup(html,'html.parser')
-            tables = soup.select("table")
-            df_away = pd.read_html(str(tables[0]))
-            self.make_sure_path_exists(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/")
-            df_away[0].to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/away.csv", index=False)
-            print("--Exported away team data")
-            df_home = pd.read_html(str(tables[1]))
-            df_home[0].to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/home.csv", index=False)
-            print("--Exported home team data")
-            df_home = df_away = pd.DataFrame()
+            try:
+                self.browser.find_element_by_id("onetrust-accept-btn-handler").click()
+                time.sleep(2)
+            except:
+                pass
+            for data_type in ["Traditional", "Advanced", "Misc", "Scoring", "Usage", "Four Factors", "Player Tracking", "Hustle", "Defense", "Matchups"]:
+                if data_type != "Traditional":
+                    self.browser.find_element_by_xpath(f"//select[@name='splits']/option[text()='{data_type}']").click()
+                WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'antialiased')))
+                html = self.browser.page_source
+                soup = BeautifulSoup(html,'html.parser')
+                tables = soup.select("table")
+                df_away = pd.read_html(str(tables[0]))
+                self.make_sure_path_exists(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/")
+                df_away[0].to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/away_{data_type.replace(' ', '_').lower()}.csv", index=False)
+                print(f"--Exported away {data_type} data")
+                df_home = pd.read_html(str(tables[1]))
+                df_home[0].to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/home_{data_type.replace(' ', '_').lower()}.csv", index=False)
+                print(f"--Exported home {data_type} data")
+                df_home = df_away = pd.DataFrame()
 
         return 0
 
