@@ -12,6 +12,7 @@ import pandas as pd
 
 from selenium.webdriver import Firefox
 from selenium.webdriver.firefox.options import Options
+from bs4 import BeautifulSoup
 
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -45,12 +46,14 @@ class NBAScraper(Scraper):
         self.path_data = os.path.normpath(os.path.expanduser("~/DATA"))
         self.path_nba = os.path.join(self.path_data, "NBA")
         self.path_nba_games = os.path.join(self.path_nba, "games")
-        self.path_nba_schedule = os.path.join(self.path_nba, "schedule")
-        # https://www.nba.com/game/den-vs-det-0021900737/box-score
-        
+        self.path_nba_schedule = os.path.join(self.path_nba, "schedule") 
 
-    def get_games_ids_by_date(self, date=None):
-        self.browser.get(f"https://stats.nba.com/scores/{date}")
+    def get_games_by_date(self, date=None):
+        if not date:
+            date = (datetime.now() - timedelta(days = 1)).strftime("%Y-%m-%d")
+            print(date)
+            
+        self.browser.get(f"https://www.nba.com/games?date={date}")
         
         try:
             WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'shadow-block')))
@@ -61,28 +64,28 @@ class NBAScraper(Scraper):
         boxes = self.browser.find_elements_by_class_name("shadow-block")
         games = []
         for box in boxes:
-            game_link = box.find_elements_by_class_name("text-cerulean")[1].get_attribute("href")
-            print(game_link)
+            game_link = box.find_elements_by_class_name("text-cerulean")[1].get_attribute("href").split("#box")[0]
             game_name = ("_".join((game_link.split("/box")[0].split("-"))[:-1])).split("/")[-1]
-            print(game_name)
             game_id = game_link.split("/box")[0].split("-")[-1]
-            print(game_id)
+            games.append({"date": date, "game_name": game_name, "game_id":game_id, "game_link":game_link})
+        
+        for game in games:
+            self.browser.get(game["game_link"])
+            print(f"Getting data for game {game['game_name']} played on the {game['date']}")
+            WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'antialiased')))
+            html = self.browser.page_source
+            soup = BeautifulSoup(html,'html.parser')
+            tables = soup.select("table")
+            df_away = pd.read_html(str(tables[0]))
+            self.make_sure_path_exists(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/")
+            df_away[0].to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/away.csv", index=False)
+            print("--Exported away team data")
+            df_home = pd.read_html(str(tables[1]))
+            df_home[0].to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/home.csv", index=False)
+            print("--Exported home team data")
+            df_home = df_away = pd.DataFrame()
 
-        print(games)
-        return games
-
-    def get_yesterday_games_ids(self):
-        pass
-
-    def get_all_games_id(self):
-        today = date.today()
-        # today_formatted = today.strftime("%m/%d/%Y")
-        today_formatted = "02/02/2020"
-        while True:
-            games_id = self.get_games_ids_by_date(today_formatted)
-            # save games id here 
-            today = (today - timedelta(days=1))
-            today_formatted = today.strftime("%m/%d/%Y")
+        return 0
 
     def scrape_date(self, date):
         print(date)
@@ -425,4 +428,5 @@ class NBAScraper(Scraper):
 if __name__ == '__main__':
     # execute only if run as the entry point into the program
     nba = NBAScraper()
-    nba.get_games_ids_by_date("02/02/2020")
+    # nba.get_games_by_date("02/02/2020")
+    nba.get_games_by_date()
