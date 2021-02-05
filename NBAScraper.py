@@ -86,6 +86,7 @@ class NBAScraper(Scraper):
         games = self._get_games_link_for_date(date)
         
         for game in games:
+            print(game["game_link"])
             self.browser.get(game["game_link"])
             print(f"Getting data for game {game['game_name']} played on the {game['date']}")
             WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'antialiased')))
@@ -104,9 +105,10 @@ class NBAScraper(Scraper):
                         print(f"Couldnt scrape {data_type}")
                         continue
                 if data_type == "Matchups":
-                    # Click on All in dropdown
+                    # Click on "Matchups" in the first dropdown menu
                     self.browser.find_element_by_xpath(f"//select[@name='splits']/option[text()='{data_type}']").click()
                     time.sleep(3)
+                    # Click on "All" in the second dropdown menu
                     self.browser.find_element_by_xpath(f"//select[@name='']/option[text()='All']").click()
                     time.sleep(3)
                     dfs = _html_to_df()
@@ -138,6 +140,51 @@ class NBAScraper(Scraper):
                 df_home.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/home_{data_type.replace(' ', '_').lower()}.csv", index=False)
                 print(f"--Exported home {data_type} data")
                 df_home = df_away = pd.DataFrame()
+                
+            # Collect play-by-play data
+            play_by_play = game["game_link"].replace("box-score", "play-by-play")
+            self.browser.get(play_by_play)
+            time.sleep(3)
+            try:
+                self.browser.find_element_by_id("onetrust-accept-btn-handler").click()
+            except:
+                pass
+            try:
+                time.sleep(3)
+                self.browser.find_element_by_xpath("//button[contains(text(),'ALL')]")
+            except:
+                print("Couldnt click on ALL button")
+            
+            # Selecting the div that contains the play-by-play articles
+            box = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div[4]')
+            # Selecting each article
+            children = box.find_elements_by_xpath("./*")
+            infos = []
+            for child in children:
+                # Get clock and action
+                ps = child.find_elements_by_css_selector("p")
+                clock = ""
+                action = ""
+                for p in ps:
+                    if "clock" in p.get_attribute("class"):
+                        clock = p.text
+                    else:
+                        action = p.text
+                # If clock wasnt found it means that the article contain either start or end of quarter info
+                if not clock:
+                    clock = child.text # ex: Start of Q1
+                    cell_away = ""
+                    cell_home = ""
+                # Check if action is perform for home or away team
+                if "end" in child.get_attribute("class"):
+                    cell_away = ""
+                    cell_home = action
+                elif "start" in child.get_attribute("class"):
+                    cell_away = action
+                    cell_home = ""
+                infos.append({"away": cell_away, "clock": clock, "home": cell_home})
+            play_by_play_df = pd.DataFrame(infos)
+            play_by_play_df.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/play_by_play.csv", index=False)
         return
 
     def scrape_date(self, date):
