@@ -70,6 +70,16 @@ class NBAScraper(Scraper):
         return games
     
     def get_games_by_date(self, date=None):
+
+        def _html_to_df():
+            html = self.browser.page_source
+            soup = BeautifulSoup(html,'html.parser')
+            tables = soup.select("table")
+            dfs = []
+            for table in tables:
+                dfs.append(pd.read_html(str(table))[0])
+            return dfs
+
         if not date:
             date = (datetime.now() - timedelta(days = 1)).strftime("%Y-%m-%d")
             
@@ -84,6 +94,8 @@ class NBAScraper(Scraper):
                 time.sleep(2)
             except:
                 pass
+            # Create a folder for the game if it doesn't already exists
+            self.make_sure_path_exists(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/")
             for data_type in ["Traditional", "Advanced", "Misc", "Scoring", "Usage", "Four Factors", "Player Tracking", "Hustle", "Defense", "Matchups"]:
                 if data_type != "Traditional":
                     try:
@@ -91,16 +103,39 @@ class NBAScraper(Scraper):
                     except:
                         print(f"Couldnt scrape {data_type}")
                         continue
+                if data_type == "Matchups":
+                    # Click on All in dropdown
+                    self.browser.find_element_by_xpath(f"//select[@name='splits']/option[text()='{data_type}']").click()
+                    time.sleep(3)
+                    self.browser.find_element_by_xpath(f"//select[@name='']/option[text()='All']").click()
+                    time.sleep(3)
+                    dfs = _html_to_df()
+                    matchups = dfs[0]
+                    matchups.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/matchups.csv", index=False)
+                    print(f"--Exported {data_type} data")
+                    matchups = pd.DataFrame()
+                    continue
+                elif data_type != "Traditional":
+                    try:
+                        self.browser.find_element_by_xpath(f"//select[@name='splits']/option[text()='{data_type}']").click()
+                    except:
+                        print(f"Couldnt scrape {data_type}")
+                        continue    
+                else:
+                    #Get inactive players
+                    WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'antialiased')))
+                    inactive_players = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/aside')
+                    inactive_players = [e.text for e in inactive_players.find_elements_by_tag_name('p')]
+                    inactive_players = pd.DataFrame(inactive_players)
+                    inactive_players[1:].to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/inactive_players.csv", index=False)
+                
                 WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'antialiased')))
-                html = self.browser.page_source
-                soup = BeautifulSoup(html,'html.parser')
-                tables = soup.select("table")
-                df_away = pd.read_html(str(tables[0]))
-                self.make_sure_path_exists(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/")
-                df_away[0].to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/away_{data_type.replace(' ', '_').lower()}.csv", index=False)
+                dfs = _html_to_df()
+                df_away = dfs[0]
+                df_away.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/away_{data_type.replace(' ', '_').lower()}.csv", index=False)
                 print(f"--Exported away {data_type} data")
-                df_home = pd.read_html(str(tables[1]))
-                df_home[0].to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/home_{data_type.replace(' ', '_').lower()}.csv", index=False)
+                df_home = dfs[1]
+                df_home.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/home_{data_type.replace(' ', '_').lower()}.csv", index=False)
                 print(f"--Exported home {data_type} data")
                 df_home = df_away = pd.DataFrame()
         return
