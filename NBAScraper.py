@@ -70,8 +70,15 @@ class NBAScraper(Scraper):
         return games
     
     def get_games_by_date(self, date=None):
+        """This method collects the data in csv format for all the games played on the specified date
+        data include: "Traditional", "Advanced", "Misc", "Scoring", "Usage", "Four Factors", "Player Tracking", "Hustle", "Defense", "Matchups", "Play by Play"
+
+        Args:
+            date ([type], optional): [The date must be specified in the YYYY/MM/DD format]. Defaults to yesterday.
+        """
 
         def _html_to_df():
+            # This private method format html tables in pandas DataFrame format
             html = self.browser.page_source
             soup = BeautifulSoup(html,'html.parser')
             tables = soup.select("table")
@@ -95,6 +102,7 @@ class NBAScraper(Scraper):
                 time.sleep(2)
             except:
                 pass
+
             # Create a folder for the game if it doesn't already exists
             self.make_sure_path_exists(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/")
             for data_type in ["Traditional", "Advanced", "Misc", "Scoring", "Usage", "Four Factors", "Player Tracking", "Hustle", "Defense", "Matchups"]:
@@ -108,6 +116,7 @@ class NBAScraper(Scraper):
                     # Click on "Matchups" in the first dropdown menu
                     self.browser.find_element_by_xpath(f"//select[@name='splits']/option[text()='{data_type}']").click()
                     time.sleep(3)
+
                     # Click on "All" in the second dropdown menu
                     self.browser.find_element_by_xpath(f"//select[@name='']/option[text()='All']").click()
                     time.sleep(3)
@@ -140,7 +149,7 @@ class NBAScraper(Scraper):
                 df_home.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/home_{data_type.replace(' ', '_').lower()}.csv", index=False)
                 print(f"--Exported home {data_type} data")
                 df_home = df_away = pd.DataFrame()
-                
+
             # Collect play-by-play data
             play_by_play = game["game_link"].replace("box-score", "play-by-play")
             self.browser.get(play_by_play)
@@ -157,9 +166,11 @@ class NBAScraper(Scraper):
             
             # Selecting the div that contains the play-by-play articles
             box = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div[4]')
+
             # Selecting each article
             children = box.find_elements_by_xpath("./*")
             infos = []
+
             for child in children:
                 # Get clock and action
                 ps = child.find_elements_by_css_selector("p")
@@ -170,11 +181,13 @@ class NBAScraper(Scraper):
                         clock = p.text
                     else:
                         action = p.text
+
                 # If clock wasnt found it means that the article contain either start or end of quarter info
                 if not clock:
                     clock = child.text # ex: Start of Q1
                     cell_away = ""
                     cell_home = ""
+
                 # Check if action is perform for home or away team
                 if "end" in child.get_attribute("class"):
                     cell_away = ""
@@ -182,9 +195,13 @@ class NBAScraper(Scraper):
                 elif "start" in child.get_attribute("class"):
                     cell_away = action
                     cell_home = ""
+
+                # Append row to infos list
                 infos.append({"away": cell_away, "clock": clock, "home": cell_home})
             play_by_play_df = pd.DataFrame(infos)
             play_by_play_df.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/play_by_play.csv", index=False)
+            print(f"--Exported play by play data")
+            play_by_play_df = pd.DataFrame()
         return
 
     def scrape_date(self, date):
