@@ -38,17 +38,17 @@ from selenium.webdriver.common.proxy import Proxy, ProxyType
 
 class NBAScraper(Scraper):
     def __init__(self):
-        super().__init__(headless=False)
         # Create a headless browser
+        super().__init__(headless=False)
         self.browser = self.open_browser()
-        # self.browser = Firefox(options=opts)
         self.web_driver_wait = 10
         self.path_data = os.path.normpath(os.path.expanduser("~/DATA"))
         self.path_nba = os.path.join(self.path_data, "NBA")
         self.path_nba_games = os.path.join(self.path_nba, "games")
         self.path_nba_schedule = os.path.join(self.path_nba, "schedule") 
 
-    def get_games_by_date(self, date=None):
+    
+    def _get_games_link_for_date(self, date=None):
         if not date:
             date = (datetime.now() - timedelta(days = 1)).strftime("%Y-%m-%d")
             
@@ -67,6 +67,13 @@ class NBAScraper(Scraper):
             game_name = ("_".join((game_link.split("/box")[0].split("-"))[:-1])).split("/")[-1]
             game_id = game_link.split("/box")[0].split("-")[-1]
             games.append({"date": date, "game_name": game_name, "game_id":game_id, "game_link":game_link})
+        return games
+    
+    def get_games_by_date(self, date=None):
+        if not date:
+            date = (datetime.now() - timedelta(days = 1)).strftime("%Y-%m-%d")
+            
+        games = self._get_games_link_for_date(date)
         
         for game in games:
             self.browser.get(game["game_link"])
@@ -79,7 +86,11 @@ class NBAScraper(Scraper):
                 pass
             for data_type in ["Traditional", "Advanced", "Misc", "Scoring", "Usage", "Four Factors", "Player Tracking", "Hustle", "Defense", "Matchups"]:
                 if data_type != "Traditional":
-                    self.browser.find_element_by_xpath(f"//select[@name='splits']/option[text()='{data_type}']").click()
+                    try:
+                        self.browser.find_element_by_xpath(f"//select[@name='splits']/option[text()='{data_type}']").click()
+                    except:
+                        print(f"Couldnt scrape {data_type}")
+                        continue
                 WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'antialiased')))
                 html = self.browser.page_source
                 soup = BeautifulSoup(html,'html.parser')
@@ -92,8 +103,7 @@ class NBAScraper(Scraper):
                 df_home[0].to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/home_{data_type.replace(' ', '_').lower()}.csv", index=False)
                 print(f"--Exported home {data_type} data")
                 df_home = df_away = pd.DataFrame()
-
-        return 0
+        return
 
     def scrape_date(self, date):
         print(date)
