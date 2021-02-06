@@ -50,6 +50,14 @@ class NBAScraper(Scraper):
 
     
     def _get_games_link_for_date(self, date=None):
+        """This private method aims to get links of games of the specified date
+
+        Args:
+            date ([type], optional): [The date needs to be in YYYY/MM/DD format]. Defaults to Yesterday.
+
+        Returns:
+            [type]: [List of game dictionaries containing for each game: the date of the game, the game name and the game link]
+        """
         if not date:
             date = (datetime.now() - timedelta(days = 1)).strftime("%Y-%m-%d")
             
@@ -58,16 +66,15 @@ class NBAScraper(Scraper):
         try:
             WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'shadow-block')))
         except:
-            # TODO: use logging
+            print("Couldn't load date's page")
             return
 
         boxes = self.browser.find_elements_by_class_name("shadow-block")
         games = []
         for box in boxes:
             game_link = box.find_elements_by_class_name("text-cerulean")[1].get_attribute("href").split("#box")[0]
-            game_name = ("_".join((game_link.split("/box")[0].split("-"))[:-1])).split("/")[-1]
-            game_id = game_link.split("/box")[0].split("-")[-1]
-            games.append({"date": date, "game_name": game_name, "game_id":game_id, "game_link":game_link})
+            game_name = game_link.split("/box")[0].split("/")[-1]
+            games.append({"date": date, "game_name": game_name, "game_link":game_link})
         return games
     
     def get_games_by_date(self, date=None):
@@ -96,9 +103,10 @@ class NBAScraper(Scraper):
         
         # Loop over list of games link and meta data
         for game in games:
-            print(game["game_link"])
+
+            # Load game page
             self.browser.get(game["game_link"])
-            print(f"\nGetting data for game {game['game_name']} played on the {game['date']}")
+            print(f"\nGetting data for game {game['game_name']} played on date {game['date']}")
             WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'antialiased')))
             try:
                 self.browser.find_element_by_id("onetrust-accept-btn-handler").click()
@@ -107,7 +115,8 @@ class NBAScraper(Scraper):
                 pass
 
             # Create a folder for the game if it doesn't already exists
-            self.make_sure_path_exists(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/")
+            game_path = f"{self.path_nba_games}/{date}/{game['game_name']}"
+            self.make_sure_path_exists(f"{game_path}/")
             for data_type in ["Traditional", "Advanced", "Misc", "Scoring", "Usage", "Four Factors", "Player Tracking", "Hustle", "Defense", "Matchups"]:
                 if data_type != "Traditional":
                     try:
@@ -128,7 +137,7 @@ class NBAScraper(Scraper):
                         time.sleep(3)
                         dfs = _html_to_df()
                         matchups = dfs[0]
-                        matchups.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/matchups.csv", index=False)
+                        matchups.to_csv(f"{game_path}/matchups.csv", index=False)
                         print(f"--Exported {data_type} data")
                         matchups = pd.DataFrame()
                     except:
@@ -150,15 +159,15 @@ class NBAScraper(Scraper):
                     inactive_players = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/aside')
                     inactive_players = [e.text for e in inactive_players.find_elements_by_tag_name('p')]
                     inactive_players = pd.DataFrame(inactive_players)
-                    inactive_players[1:].to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/inactive_players.csv", index=False)
+                    inactive_players[1:].to_csv(f"{game_path}/inactive_players.csv", index=False)
                 
                 WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'antialiased')))
                 dfs = _html_to_df()
                 df_away = dfs[0]
-                df_away.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/away_{data_type.replace(' ', '_').lower()}.csv", index=False)
+                df_away.to_csv(f"{game_path}/away_{data_type.replace(' ', '_').lower()}.csv", index=False)
                 print(f"--Exported away {data_type} data")
                 df_home = dfs[1]
-                df_home.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/home_{data_type.replace(' ', '_').lower()}.csv", index=False)
+                df_home.to_csv(f"{game_path}/home_{data_type.replace(' ', '_').lower()}.csv", index=False)
                 print(f"--Exported home {data_type} data")
                 df_home = df_away = pd.DataFrame()
 
@@ -173,13 +182,13 @@ class NBAScraper(Scraper):
             columns = list(df_summary.columns)
             columns[0] = "TEAM"
             df_summary.columns = columns
-            df_summary.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/summary.csv", index=False)
+            df_summary.to_csv(f"{game_path}/summary.csv", index=False)
             df_summary = pd.DataFrame()
             print(f"--Exported summary data")
 
             # Get Recap
             recap = self.browser.find_element_by_id("story").text
-            with open(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/recap.txt", "w") as text_file:
+            with open(f"{game_path}/recap.txt", "w") as text_file:
                 text_file.write(recap)
             print("--Saved recap")
 
@@ -190,15 +199,15 @@ class NBAScraper(Scraper):
             officials = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/div/section/div/div[3]/div[2]').text
             attendance = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/div/section/div/div[4]/div[2]').text
             df_game_info = pd.DataFrame([{"lead_change":lead_change, "times_tied":times_tied,"location":location, "officials":officials, "attendance": attendance}])
-            df_game_info.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/game_info.csv", index=False)
+            df_game_info.to_csv(f"{game_path}/game_info.csv", index=False)
             df_game_info = pd.DataFrame()
 
             # Download Gamebook % PDF
             gamebook = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[3]/a[1]').get_attribute("href")
             pdf = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[3]/a[2]').get_attribute("href")
-            urllib.request.urlretrieve(gamebook, f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/gamebook.pdf")
+            urllib.request.urlretrieve(gamebook, f"{game_path}/gamebook.pdf")
             print("--Downloaded Gamebook PDF")
-            urllib.request.urlretrieve(pdf, f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/game_pdf.pdf")
+            urllib.request.urlretrieve(pdf, f"{game_path}/game_pdf.pdf")
             print("--Downloaded Game PDF")
 
             # Collect play-by-play data
@@ -250,7 +259,7 @@ class NBAScraper(Scraper):
                 # Append row to infos list
                 infos.append({"away": cell_away, "clock": clock, "home": cell_home})
             play_by_play_df = pd.DataFrame(infos)
-            play_by_play_df.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/play_by_play.csv", index=False)
+            play_by_play_df.to_csv(f"{game_path}/play_by_play.csv", index=False)
             print(f"--Exported play by play data")
             play_by_play_df = pd.DataFrame()
         return
