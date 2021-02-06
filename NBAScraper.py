@@ -33,6 +33,7 @@ from os.path import isfile, join
 from pprint import pprint
 
 import requests
+import urllib.request
 from lxml.html import fromstring
 from selenium.webdriver.common.proxy import Proxy, ProxyType
 
@@ -166,7 +167,32 @@ class NBAScraper(Scraper):
             df_summary.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/summary.csv", index=False)
             df_summary = pd.DataFrame()
             print(f"--Exported summary data")
-            
+
+            # Get Recap
+            recap = self.browser.find_element_by_id("story").text
+            with open(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/recap.txt", "w") as text_file:
+                text_file.write(recap)
+            print("-- Saved recap")
+
+            # Get Game Info, Lead Changes and Times Tied
+            lead_change = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[2]/div[1]/p[2]').text
+            times_tied = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[2]/div[2]/p[2]').text
+            location = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/div/section/div/div[2]/div[2]').text
+            officials = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/div/section/div/div[3]/div[2]').text
+            attendance = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/div/section/div/div[4]/div[2]').text
+            df_game_info = pd.DataFrame([{"lead_change":lead_change, "times_tied":times_tied,"location":location, "officials":officials, "attendance": attendance}])
+            df_game_info.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/game_info.csv", index=False)
+            df_game_info = pd.DataFrame()
+            quit()
+
+            # Download Gamebook % PDF
+            gamebook = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[3]/a[1]').get_attribute("href")
+            pdf = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[3]/a[2]').get_attribute("href")
+            urllib.request.urlretrieve(gamebook, f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/gamebook.pdf")
+            print("---Downloaded Gamebook PDF")
+            urllib.request.urlretrieve(pdf, f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/game_pdf.pdf")
+            print("---Downloaded Game PDF")
+
             # Collect play-by-play data
             play_by_play = game["game_link"].replace("box-score", "play-by-play")
             self.browser.get(play_by_play)
