@@ -98,7 +98,7 @@ class NBAScraper(Scraper):
         for game in games:
             print(game["game_link"])
             self.browser.get(game["game_link"])
-            print(f"Getting data for game {game['game_name']} played on the {game['date']}")
+            print(f"\nGetting data for game {game['game_name']} played on the {game['date']}")
             WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'antialiased')))
             try:
                 self.browser.find_element_by_id("onetrust-accept-btn-handler").click()
@@ -114,6 +114,8 @@ class NBAScraper(Scraper):
                         self.browser.find_element_by_xpath(f"//select[@name='splits']/option[text()='{data_type}']").click()
                     except:
                         print(f"Couldnt scrape {data_type}")
+
+                        # Move on the next data_type page
                         continue
                 if data_type == "Matchups":
                     # Click on "Matchups" in the first dropdown menu
@@ -121,19 +123,26 @@ class NBAScraper(Scraper):
                     time.sleep(3)
 
                     # Click on "All" in the second dropdown menu
-                    self.browser.find_element_by_xpath(f"//select[@name='']/option[text()='All']").click()
-                    time.sleep(3)
-                    dfs = _html_to_df()
-                    matchups = dfs[0]
-                    matchups.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/matchups.csv", index=False)
-                    print(f"--Exported {data_type} data")
-                    matchups = pd.DataFrame()
+                    try:
+                        self.browser.find_element_by_xpath(f"//select[@name='']/option[text()='All']").click()
+                        time.sleep(3)
+                        dfs = _html_to_df()
+                        matchups = dfs[0]
+                        matchups.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/matchups.csv", index=False)
+                        print(f"--Exported {data_type} data")
+                        matchups = pd.DataFrame()
+                    except:
+                        print("Couldn't click on ALL button")
+
+                    # Move on the next data_type page
                     continue
                 elif data_type != "Traditional":
                     try:
                         self.browser.find_element_by_xpath(f"//select[@name='splits']/option[text()='{data_type}']").click()
                     except:
                         print(f"Couldnt scrape {data_type}")
+
+                        # Move on the next data_type page
                         continue    
                 else:
                     #Get inactive players
@@ -172,7 +181,7 @@ class NBAScraper(Scraper):
             recap = self.browser.find_element_by_id("story").text
             with open(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/recap.txt", "w") as text_file:
                 text_file.write(recap)
-            print("-- Saved recap")
+            print("--Saved recap")
 
             # Get Game Info, Lead Changes and Times Tied
             lead_change = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[2]/div[1]/p[2]').text
@@ -183,15 +192,14 @@ class NBAScraper(Scraper):
             df_game_info = pd.DataFrame([{"lead_change":lead_change, "times_tied":times_tied,"location":location, "officials":officials, "attendance": attendance}])
             df_game_info.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/game_info.csv", index=False)
             df_game_info = pd.DataFrame()
-            quit()
 
             # Download Gamebook % PDF
             gamebook = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[3]/a[1]').get_attribute("href")
             pdf = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[3]/a[2]').get_attribute("href")
             urllib.request.urlretrieve(gamebook, f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/gamebook.pdf")
-            print("---Downloaded Gamebook PDF")
+            print("--Downloaded Gamebook PDF")
             urllib.request.urlretrieve(pdf, f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/game_pdf.pdf")
-            print("---Downloaded Game PDF")
+            print("--Downloaded Game PDF")
 
             # Collect play-by-play data
             play_by_play = game["game_link"].replace("box-score", "play-by-play")
