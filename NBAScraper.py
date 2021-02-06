@@ -89,9 +89,11 @@ class NBAScraper(Scraper):
 
         if not date:
             date = (datetime.now() - timedelta(days = 1)).strftime("%Y-%m-%d")
-            
+        
+        # Get list of games for specified date and their link
         games = self._get_games_link_for_date(date)
         
+        # Loop over list of games link and meta data
         for game in games:
             print(game["game_link"])
             self.browser.get(game["game_link"])
@@ -150,6 +152,21 @@ class NBAScraper(Scraper):
                 print(f"--Exported home {data_type} data")
                 df_home = df_away = pd.DataFrame()
 
+            # Collect summary data
+            summary = game["game_link"].replace("box-score", "")
+            self.browser.get(summary)
+            time.sleep(3)
+            dfs = _html_to_df()
+            
+            # Concatenate the two dataframe together
+            df_summary = pd.concat([dfs[0], dfs[1]], axis=1).reindex(dfs[0].index)
+            columns = list(df_summary.columns)
+            columns[0] = "TEAM"
+            df_summary.columns = columns
+            df_summary.to_csv(f"{self.path_nba_games}/{date}/{game['game_name']}_{game['game_id']}/summary.csv", index=False)
+            df_summary = pd.DataFrame()
+            print(f"--Exported summary data")
+            
             # Collect play-by-play data
             play_by_play = game["game_link"].replace("box-score", "play-by-play")
             self.browser.get(play_by_play)
@@ -203,28 +220,6 @@ class NBAScraper(Scraper):
             print(f"--Exported play by play data")
             play_by_play_df = pd.DataFrame()
         return
-
-    def scrape_date(self, date):
-        print(date)
-        # date must be in the format dd_mm_yyyy
-        day = date.split("_")[0]
-        month = date.split("_")[1]
-        year = date.split("_")[2]
-        url = f"https://stats.nba.com/scores/{month}/{day}/{year}"
-        self.browser.get(url)
-        try:
-            WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'bottom-bar')))
-        except:
-            try:
-                WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'linescores-container')))
-            except:
-                print(f"Error scraping {url}")
-                return
-        self.make_sure_path_exists(self.path_nba_schedule)
-        html_source = self.browser.page_source
-        html_filename = os.path.join(self.path_nba_schedule, f"{date}.html")
-        with open(html_filename, 'w') as f:
-            f.write(html_source)
     
     def scrape_game_stats_by_id(self):
         df = pd.read_csv("/home/locsta/DATA/NBA/schedule.csv")
