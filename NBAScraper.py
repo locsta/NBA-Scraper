@@ -1,41 +1,34 @@
+# Selenium & other web oriented libraries
 from selenium_scraper import Scraper
-
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver import ActionChains
-import subprocess
-import os
-import errno
-import json
-import time
-import pandas as pd
-
 from selenium.webdriver import Firefox
 from selenium.webdriver.firefox.options import Options
-from bs4 import BeautifulSoup
-
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException
 from selenium.common import exceptions
+from selenium.webdriver.common.proxy import Proxy, ProxyType
+import urllib.request
+from lxml.html import fromstring
+from bs4 import BeautifulSoup
+import requests
+
+# OS & Data libraries
+from os import listdir
+from os.path import isfile, join
+import os
+import sys
+import json
+import pandas as pd
+
+# Time
+import time
 from datetime import date
 from datetime import timedelta
 from datetime import datetime
-import requests
-import re
-import logging
-import logging.handlers
-import sys
-import numpy as np
-from os import listdir
-from os.path import isfile, join
-from pprint import pprint
-
-import requests
-import urllib.request
-from lxml.html import fromstring
-from selenium.webdriver.common.proxy import Proxy, ProxyType
 
 class NBAScraper(Scraper):
     def __init__(self):
