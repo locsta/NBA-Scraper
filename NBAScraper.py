@@ -58,7 +58,7 @@ class NBAScraper(Scraper):
         try:
             WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'shadow-block')))
         except:
-            print("Couldn't load date's page")
+            self.logging.error("Couldn't load date's page")
             return
 
         boxes = self.browser.find_elements_by_class_name("shadow-block")
@@ -88,7 +88,7 @@ class NBAScraper(Scraper):
 
             # Load game page
             self.browser.get(game["game_link"])
-            print(f"\nGetting data for game {game['game_name']} played on date {game['date']}")
+            self.logging.info(f"\nGetting data for game {game['game_name']} played on date {game['date']}")
             WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'antialiased')))
             try:
                 self.browser.find_element_by_id("onetrust-accept-btn-handler").click()
@@ -104,7 +104,7 @@ class NBAScraper(Scraper):
                     try:
                         self.browser.find_element_by_xpath(f"//select[@name='splits']/option[text()='{data_type}']").click()
                     except:
-                        print(f"Couldnt scrape {data_type}")
+                        self.logging.warning(f"Couldnt scrape {data_type}")
 
                         # Move on the next data_type page
                         continue
@@ -120,10 +120,10 @@ class NBAScraper(Scraper):
                         dfs = self.html_tables_to_df()
                         matchups = dfs[0]
                         matchups.to_csv(f"{game_path}/matchups.csv", index=False)
-                        print(f"--Exported {data_type} data")
+                        self.logging.info(f"Exported {data_type} data")
                         matchups = pd.DataFrame()
                     except:
-                        print("Couldn't click on ALL button")
+                        self.logging.warning("Couldn't click on ALL button")
 
                     # Move on the next data_type page
                     continue
@@ -131,7 +131,7 @@ class NBAScraper(Scraper):
                     try:
                         self.browser.find_element_by_xpath(f"//select[@name='splits']/option[text()='{data_type}']").click()
                     except:
-                        print(f"Couldnt scrape {data_type}")
+                        self.logging.warning(f"Couldnt scrape {data_type}")
 
                         # Move on the next data_type page
                         continue    
@@ -147,10 +147,10 @@ class NBAScraper(Scraper):
                 dfs = self.html_tables_to_df()
                 df_away = dfs[0]
                 df_away.to_csv(f"{game_path}/away_{data_type.replace(' ', '_').lower()}.csv", index=False)
-                print(f"--Exported away {data_type} data")
+                self.logging.info(f"Exported away {data_type} data")
                 df_home = dfs[1]
                 df_home.to_csv(f"{game_path}/home_{data_type.replace(' ', '_').lower()}.csv", index=False)
-                print(f"--Exported home {data_type} data")
+                self.logging.info(f"Exported home {data_type} data")
                 df_home = df_away = pd.DataFrame()
 
             # Collect summary data
@@ -166,13 +166,13 @@ class NBAScraper(Scraper):
             df_summary.columns = columns
             df_summary.to_csv(f"{game_path}/summary.csv", index=False)
             df_summary = pd.DataFrame()
-            print(f"--Exported summary data")
+            self.logging.info("Exported summary data")
 
             # Get Recap
             recap = self.browser.find_element_by_id("story").text
             with open(f"{game_path}/recap.txt", "w") as text_file:
                 text_file.write(recap)
-            print("--Saved recap")
+            self.logging.info("Saved recap")
 
             # Get Game Info, Lead Changes and Times Tied
             lead_change = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[2]/div[1]/p[2]').text
@@ -186,15 +186,15 @@ class NBAScraper(Scraper):
 
             # Saving script content containing meta data
             self.script_data_from_id_to_json("__NEXT_DATA__", f"{game_path}/meta_data.json")
-            print("--Saved metadata")
+            self.logging.info("Saved metadata")
 
             # Download Gamebook % PDF
             gamebook = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[3]/a[1]').get_attribute("href")
             pdf = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[3]/a[2]').get_attribute("href")
             urllib.request.urlretrieve(gamebook, f"{game_path}/gamebook.pdf")
-            print("--Downloaded Gamebook PDF")
+            self.logging.info("Downloaded Gamebook PDF")
             urllib.request.urlretrieve(pdf, f"{game_path}/game_pdf.pdf")
-            print("--Downloaded Game PDF")
+            self.logging.info("Downloaded Game PDF")
 
             # Collect play-by-play data
             play_by_play = game["game_link"].replace("box-score", "play-by-play")
@@ -208,46 +208,49 @@ class NBAScraper(Scraper):
                 time.sleep(3)
                 self.browser.find_element_by_xpath("//button[contains(text(),'ALL')]")
             except:
-                print("Couldnt click on ALL button")
+                self.logging.warning("Couldnt click on ALL button")
             
             # Selecting the div that contains the play-by-play articles
-            box = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div[4]')
+            try:
+                box = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div[4]')
+            
+                # Selecting each article
+                children = box.find_elements_by_xpath("./*")
+                infos = []
 
-            # Selecting each article
-            children = box.find_elements_by_xpath("./*")
-            infos = []
+                for child in children:
+                    # Get clock and action
+                    ps = child.find_elements_by_css_selector("p")
+                    clock = ""
+                    action = ""
+                    for p in ps:
+                        if "clock" in p.get_attribute("class"):
+                            clock = p.text
+                        else:
+                            action = p.text
 
-            for child in children:
-                # Get clock and action
-                ps = child.find_elements_by_css_selector("p")
-                clock = ""
-                action = ""
-                for p in ps:
-                    if "clock" in p.get_attribute("class"):
-                        clock = p.text
-                    else:
-                        action = p.text
+                    # If clock wasnt found it means that the article contain either start or end of quarter info
+                    if not clock:
+                        clock = child.text # ex: Start of Q1
+                        cell_away = ""
+                        cell_home = ""
 
-                # If clock wasnt found it means that the article contain either start or end of quarter info
-                if not clock:
-                    clock = child.text # ex: Start of Q1
-                    cell_away = ""
-                    cell_home = ""
+                    # Check if action is perform for home or away team
+                    if "end" in child.get_attribute("class"):
+                        cell_away = ""
+                        cell_home = action
+                    elif "start" in child.get_attribute("class"):
+                        cell_away = action
+                        cell_home = ""
 
-                # Check if action is perform for home or away team
-                if "end" in child.get_attribute("class"):
-                    cell_away = ""
-                    cell_home = action
-                elif "start" in child.get_attribute("class"):
-                    cell_away = action
-                    cell_home = ""
-
-                # Append row to infos list
-                infos.append({"away": cell_away, "clock": clock, "home": cell_home})
-            play_by_play_df = pd.DataFrame(infos)
-            play_by_play_df.to_csv(f"{game_path}/play_by_play.csv", index=False)
-            print(f"--Exported play by play data")
-            play_by_play_df = pd.DataFrame()
+                    # Append row to infos list
+                    infos.append({"away": cell_away, "clock": clock, "home": cell_home})
+                play_by_play_df = pd.DataFrame(infos)
+                play_by_play_df.to_csv(f"{game_path}/play_by_play.csv", index=False)
+                self.logging.info(f"Exported play by play data")
+                play_by_play_df = pd.DataFrame()
+            except:
+                self.logging.warning("Couldn't scrape play by play data")
         self.browser.quit()
         return
     
