@@ -78,16 +78,6 @@ class NBAScraper(Scraper):
             date ([type], optional): [The date must be specified in the YYYY/MM/DD format]. Defaults to yesterday.
         """
 
-        def _html_to_df():
-            # This private method format html tables in pandas DataFrame format
-            html = self.browser.page_source
-            soup = BeautifulSoup(html,'html.parser')
-            tables = soup.select("table")
-            dfs = []
-            for table in tables:
-                dfs.append(pd.read_html(str(table))[0])
-            return dfs
-
         if not date:
             date = (datetime.now() - timedelta(days = 1)).strftime("%Y-%m-%d")
         
@@ -128,7 +118,7 @@ class NBAScraper(Scraper):
                     try:
                         self.browser.find_element_by_xpath(f"//select[@name='']/option[text()='All']").click()
                         time.sleep(3)
-                        dfs = _html_to_df()
+                        dfs = self.html_tables_to_df()
                         matchups = dfs[0]
                         matchups.to_csv(f"{game_path}/matchups.csv", index=False)
                         print(f"--Exported {data_type} data")
@@ -147,7 +137,7 @@ class NBAScraper(Scraper):
                         # Move on the next data_type page
                         continue    
                 else:
-                    #Get inactive players
+                    # Get inactive players
                     WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'antialiased')))
                     inactive_players = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/aside')
                     inactive_players = [e.text for e in inactive_players.find_elements_by_tag_name('p')]
@@ -155,7 +145,7 @@ class NBAScraper(Scraper):
                     inactive_players[1:].to_csv(f"{game_path}/inactive_players.csv", index=False)
                 
                 WebDriverWait(self.browser, self.web_driver_wait).until(EC.presence_of_element_located((By.CLASS_NAME, 'antialiased')))
-                dfs = _html_to_df()
+                dfs = self.html_tables_to_df()
                 df_away = dfs[0]
                 df_away.to_csv(f"{game_path}/away_{data_type.replace(' ', '_').lower()}.csv", index=False)
                 print(f"--Exported away {data_type} data")
@@ -168,7 +158,7 @@ class NBAScraper(Scraper):
             summary = game["game_link"].replace("box-score", "")
             self.browser.get(summary)
             time.sleep(3)
-            dfs = _html_to_df()
+            dfs = self.html_tables_to_df()
             
             # Concatenate the two dataframe together
             df_summary = pd.concat([dfs[0], dfs[1]], axis=1).reindex(dfs[0].index)
