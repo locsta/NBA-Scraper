@@ -33,7 +33,7 @@ from datetime import datetime
 class NBAScraper(Scraper):
     def __init__(self):
         # Create a headless browser
-        super().__init__(headless=False)
+        super().__init__(headless=False, log_filename=os.path.basename(__file__).replace(".py", ".log"))
         self.browser = self.open_browser()
         self.web_driver_wait = 10
         self.path_data = os.path.normpath(os.path.expanduser("~/DATA"))
