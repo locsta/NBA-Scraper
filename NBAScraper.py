@@ -39,8 +39,7 @@ class NBAScraper(Scraper):
         self.path_data = os.path.normpath(os.path.expanduser("~/DATA"))
         self.path_nba = os.path.join(self.path_data, "NBA")
         self.path_nba_games = os.path.join(self.path_nba, "games")
-        self.path_nba_schedule = os.path.join(self.path_nba, "schedule") 
-
+        self.path_nba_schedule = os.path.join(self.path_nba, "schedule")
     
     def _get_games_link_for_date(self, date=None):
         """This private method aims to get links of games of the specified date
@@ -185,7 +184,9 @@ class NBAScraper(Scraper):
             df_game_info.to_csv(f"{game_path}/game_info.csv", index=False)
             df_game_info = pd.DataFrame()
 
-            #TODO: get javascript variables containing IDs, broadcasters etc..
+            # Saving script content containing meta data
+            self.script_data_from_id_to_json("__NEXT_DATA__", f"{game_path}/meta_data.json")
+            print("--Saved metadata")
 
             # Download Gamebook % PDF
             gamebook = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[3]/a[1]').get_attribute("href")
@@ -247,6 +248,7 @@ class NBAScraper(Scraper):
             play_by_play_df.to_csv(f"{game_path}/play_by_play.csv", index=False)
             print(f"--Exported play by play data")
             play_by_play_df = pd.DataFrame()
+        self.browser.quit()
         return
     
         
