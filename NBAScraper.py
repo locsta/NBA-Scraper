@@ -11,7 +11,6 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException
 from selenium.common import exceptions
 from selenium.webdriver.common.proxy import Proxy, ProxyType
-import urllib.request
 from lxml.html import fromstring
 from bs4 import BeautifulSoup
 import requests
@@ -39,7 +38,7 @@ class NBAScraper(Scraper):
         self.path_data = os.path.normpath(os.path.expanduser("~/DATA"))
         self.path_nba = os.path.join(self.path_data, "NBA")
         self.path_nba_games = os.path.join(self.path_nba, "games")
-        self.path_nba_schedule = os.path.join(self.path_nba, "schedule")
+        self.path_nba_schedule = os.path.join(self.path_nba, "schedule.csv")
     
     def _get_games_link_for_date(self, date=None):
         """This private method aims to get links of games of the specified date
@@ -191,10 +190,8 @@ class NBAScraper(Scraper):
             # Download Gamebook % PDF
             gamebook = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[3]/a[1]').get_attribute("href")
             pdf = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[3]/a[2]').get_attribute("href")
-            urllib.request.urlretrieve(gamebook, f"{game_path}/gamebook.pdf")
-            self.logging.info("Downloaded Gamebook PDF")
-            urllib.request.urlretrieve(pdf, f"{game_path}/game_pdf.pdf")
-            self.logging.info("Downloaded Game PDF")
+            self.download(gamebook, f"{game_path}/gamebook.pdf")
+            self.download(pdf, f"{game_path}/game_pdf.pdf")
 
             # Collect play-by-play data
             play_by_play = game["game_link"].replace("box-score", "play-by-play")
@@ -255,10 +252,13 @@ class NBAScraper(Scraper):
         return
     
     def schedule_to_csv(self):
-        pass
+        schedule_df = pd.DataFrame([{"test":"lol"}, {"test": "kikoo"}])
+        schedule_df.to_csv(self.path_nba_schedule)
+        self.logging.info("Saved schedule to CSV file")
 
 if __name__ == '__main__':
     # execute only if run as the entry point into the program
     nba = NBAScraper()
+    # nba.schedule_to_csv()
     # nba.get_games_by_date("02/02/2020")
     nba.get_games_by_date()
