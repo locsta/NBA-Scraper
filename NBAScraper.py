@@ -68,23 +68,110 @@ class NBAScraper(Scraper):
             games.append({"date": date, "game_name": game_name, "game_link":game_link})
         return games
     
-    def get_games_by_date(self, date=None):
-        """This method collects the data in csv format for all the games played on the specified date
-        data include: "Traditional", "Advanced", "Misc", "Scoring", "Usage", "Four Factors", "Player Tracking", "Hustle", "Defense", "Matchups", "Play by Play"
-
-        Args:
-            date ([type], optional): [The date must be specified in the YYYY/MM/DD format]. Defaults to yesterday.
-        """
-
-        if not date:
-            date = (datetime.now() - timedelta(days = 1)).strftime("%Y-%m-%d")
+    def _get_game_summary(self, game, game_path):
+        # Collect summary data
+        summary = game["game_link"].replace("box-score", "")
+        self.browser.get(summary)
+        time.sleep(3)
+        dfs = self.html_tables_to_df()
         
-        # Get list of games for specified date and their link
-        games = self._get_games_link_for_date(date)
-        
-        # Loop over list of games link and meta data
-        for game in games:
+        # Concatenate the two dataframe together
+        df_summary = pd.concat([dfs[0], dfs[1]], axis=1).reindex(dfs[0].index)
+        columns = list(df_summary.columns)
+        columns[0] = "TEAM"
+        df_summary.columns = columns
+        df_summary.to_csv(f"{game_path}/summary.csv", index=False)
+        df_summary = pd.DataFrame()
+        self.logging.info("Exported summary data")
 
+        # Get Recap
+        recap = self.browser.find_element_by_id("story").text
+        with open(f"{game_path}/recap.txt", "w") as text_file:
+            text_file.write(recap)
+        self.logging.info("Saved recap")
+
+        # Get Game Info, Lead Changes and Times Tied
+        lead_change = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[2]/div[1]/p[2]').text
+        times_tied = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[2]/div[2]/p[2]').text
+        location = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/div/section/div/div[2]/div[2]').text
+        officials = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/div/section/div/div[3]/div[2]').text
+        attendance = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/div/section/div/div[4]/div[2]').text
+        df_game_info = pd.DataFrame([{"lead_change":lead_change, "times_tied":times_tied,"location":location, "officials":officials, "attendance": attendance}])
+        df_game_info.to_csv(f"{game_path}/game_info.csv", index=False)
+        df_game_info = pd.DataFrame()
+
+        # Saving script content containing meta data
+        self.script_data_from_id_to_json("__NEXT_DATA__", f"{game_path}/meta_data.json")
+        self.logging.info("Saved metadata")
+
+        # Download Gamebook % PDF
+        gamebook = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[3]/a[1]').get_attribute("href")
+        pdf = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[3]/a[2]').get_attribute("href")
+        self.download(gamebook, f"{game_path}/gamebook.pdf")
+        self.download(pdf, f"{game_path}/game_pdf.pdf")
+        return
+
+    def _get_game_play_by_play(self, game, game_path):
+        # Collect play-by-play data
+        play_by_play = game["game_link"].replace("box-score", "play-by-play")
+        self.browser.get(play_by_play)
+        time.sleep(3)
+        try:
+            self.browser.find_element_by_id("onetrust-accept-btn-handler").click()
+        except:
+            pass
+        try:
+            time.sleep(3)
+            self.browser.find_element_by_xpath("//button[contains(text(),'ALL')]")
+        except:
+            self.logging.warning("Couldnt click on ALL button")
+        
+        # Selecting the div that contains the play-by-play articles
+        try:
+            box = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div[4]')
+        
+            # Selecting each article
+            children = box.find_elements_by_xpath("./*")
+            infos = []
+
+            for child in children:
+                # Get clock and action
+                ps = child.find_elements_by_css_selector("p")
+                clock = ""
+                action = ""
+                for p in ps:
+                    if "clock" in p.get_attribute("class"):
+                        clock = p.text
+                    else:
+                        action = p.text
+
+                # If clock wasnt found it means that the article contain either start or end of quarter info
+                if not clock:
+                    clock = child.text # ex: Start of Q1
+                    cell_away = ""
+                    cell_home = ""
+
+                # Check if action is perform for home or away team
+                if "end" in child.get_attribute("class"):
+                    cell_away = ""
+                    cell_home = action
+                elif "start" in child.get_attribute("class"):
+                    cell_away = action
+                    cell_home = ""
+
+                # Append row to infos list
+                infos.append({"away": cell_away, "clock": clock, "home": cell_home})
+            play_by_play_df = pd.DataFrame(infos)
+            play_by_play_df.to_csv(f"{game_path}/play_by_play.csv", index=False)
+            self.logging.info(f"Exported play by play data")
+            play_by_play_df = pd.DataFrame()
+        except:
+            self.logging.warning("Couldn't scrape play by play data")
+    
+    def get_game(self, game, game_date, data_types=[]):
+        if not game:
+            return
+        else:
             # Load game page
             self.browser.get(game["game_link"])
             self.logging.info(f"\nGetting data for game {game['game_name']} played on date {game['date']}")
@@ -96,9 +183,21 @@ class NBAScraper(Scraper):
                 pass
 
             # Create a folder for the game if it doesn't already exists
-            game_path = f"{self.path_nba_games}/{date}/{game['game_name']}"
+            game_path = f"{self.path_nba_games}/{game_date}/{game['game_name']}"
             self.make_sure_path_exists(f"{game_path}/")
-            for data_type in ["Traditional", "Advanced", "Misc", "Scoring", "Usage", "Four Factors", "Player Tracking", "Hustle", "Defense", "Matchups"]:
+            if data_types == []:
+                data_types = ["Traditional", "Advanced", "Misc", "Scoring", "Usage", "Four Factors", "Player Tracking", "Hustle", "Defense", "Matchups", "Summary", "Play by play"]
+            scrape_summary = scrape_play_by_play = False
+            if "Summary" in data_types:
+                scrape_summary = True
+                data_types.remove("Summary")
+                
+            if "Play by play" in data_types:
+                data_types.remove("Play by play")
+                scrape_play_by_play = True
+                
+
+            for data_type in data_types:
                 if data_type != "Traditional":
                     try:
                         self.browser.find_element_by_xpath(f"//select[@name='splits']/option[text()='{data_type}']").click()
@@ -107,6 +206,7 @@ class NBAScraper(Scraper):
 
                         # Move on the next data_type page
                         continue
+
                 if data_type == "Matchups":
                     # Click on "Matchups" in the first dropdown menu
                     self.browser.find_element_by_xpath(f"//select[@name='splits']/option[text()='{data_type}']").click()
@@ -152,104 +252,30 @@ class NBAScraper(Scraper):
                 self.logging.info(f"Exported home {data_type} data")
                 df_home = df_away = pd.DataFrame()
 
-            # Collect summary data
-            summary = game["game_link"].replace("box-score", "")
-            self.browser.get(summary)
-            time.sleep(3)
-            dfs = self.html_tables_to_df()
-            
-            # Concatenate the two dataframe together
-            df_summary = pd.concat([dfs[0], dfs[1]], axis=1).reindex(dfs[0].index)
-            columns = list(df_summary.columns)
-            columns[0] = "TEAM"
-            df_summary.columns = columns
-            df_summary.to_csv(f"{game_path}/summary.csv", index=False)
-            df_summary = pd.DataFrame()
-            self.logging.info("Exported summary data")
-
-            # Get Recap
-            recap = self.browser.find_element_by_id("story").text
-            with open(f"{game_path}/recap.txt", "w") as text_file:
-                text_file.write(recap)
-            self.logging.info("Saved recap")
-
-            # Get Game Info, Lead Changes and Times Tied
-            lead_change = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[2]/div[1]/p[2]').text
-            times_tied = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[2]/div[2]/p[2]').text
-            location = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/div/section/div/div[2]/div[2]').text
-            officials = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/div/section/div/div[3]/div[2]').text
-            attendance = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/div/section/div/div[4]/div[2]').text
-            df_game_info = pd.DataFrame([{"lead_change":lead_change, "times_tied":times_tied,"location":location, "officials":officials, "attendance": attendance}])
-            df_game_info.to_csv(f"{game_path}/game_info.csv", index=False)
-            df_game_info = pd.DataFrame()
-
-            # Saving script content containing meta data
-            self.script_data_from_id_to_json("__NEXT_DATA__", f"{game_path}/meta_data.json")
-            self.logging.info("Saved metadata")
-
-            # Download Gamebook % PDF
-            gamebook = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[3]/a[1]').get_attribute("href")
-            pdf = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div/div[3]/a[2]').get_attribute("href")
-            self.download(gamebook, f"{game_path}/gamebook.pdf")
-            self.download(pdf, f"{game_path}/game_pdf.pdf")
-
-            # Collect play-by-play data
-            play_by_play = game["game_link"].replace("box-score", "play-by-play")
-            self.browser.get(play_by_play)
-            time.sleep(3)
-            try:
-                self.browser.find_element_by_id("onetrust-accept-btn-handler").click()
-            except:
-                pass
-            try:
-                time.sleep(3)
-                self.browser.find_element_by_xpath("//button[contains(text(),'ALL')]")
-            except:
-                self.logging.warning("Couldnt click on ALL button")
-            
-            # Selecting the div that contains the play-by-play articles
-            try:
-                box = self.browser.find_element_by_xpath('//*[@id="__next"]/div[2]/div[4]/section/div/div[4]')
-            
-                # Selecting each article
-                children = box.find_elements_by_xpath("./*")
-                infos = []
-
-                for child in children:
-                    # Get clock and action
-                    ps = child.find_elements_by_css_selector("p")
-                    clock = ""
-                    action = ""
-                    for p in ps:
-                        if "clock" in p.get_attribute("class"):
-                            clock = p.text
-                        else:
-                            action = p.text
-
-                    # If clock wasnt found it means that the article contain either start or end of quarter info
-                    if not clock:
-                        clock = child.text # ex: Start of Q1
-                        cell_away = ""
-                        cell_home = ""
-
-                    # Check if action is perform for home or away team
-                    if "end" in child.get_attribute("class"):
-                        cell_away = ""
-                        cell_home = action
-                    elif "start" in child.get_attribute("class"):
-                        cell_away = action
-                        cell_home = ""
-
-                    # Append row to infos list
-                    infos.append({"away": cell_away, "clock": clock, "home": cell_home})
-                play_by_play_df = pd.DataFrame(infos)
-                play_by_play_df.to_csv(f"{game_path}/play_by_play.csv", index=False)
-                self.logging.info(f"Exported play by play data")
-                play_by_play_df = pd.DataFrame()
-            except:
-                self.logging.warning("Couldn't scrape play by play data")
-        self.browser.quit()
+            if scrape_summary:
+                self._get_game_summary(game, game_path)
+            if scrape_play_by_play:
+                self._get_game_play_by_play(game, game_path)
         return
+    
+    
+    def get_games_by_date(self, date=None):
+        """This method collects the data in csv format for all the games played on the specified date
+        data include: "Traditional", "Advanced", "Misc", "Scoring", "Usage", "Four Factors", "Player Tracking", "Hustle", "Defense", "Matchups", "Play by Play"
+
+        Args:
+            date ([type], optional): [The date must be specified in the YYYY/MM/DD format]. Defaults to yesterday.
+        """
+
+        if not date:
+            date = (datetime.now() - timedelta(days = 1)).strftime("%Y-%m-%d")
+        
+        # Get list of games for specified date and their link
+        games = self._get_games_link_for_date(date)
+        
+        # Loop over list of games link and meta data
+        for game in games:
+            self.get_game(game, game_date=str(date))
     
     def schedule_to_csv(self):
         schedule_df = pd.DataFrame([{"test":"lol"}, {"test": "kikoo"}])
